@@ -62,4 +62,19 @@ public class RedisConfig {
         logger.info("Loading token bucket Lua script");
         return new ResourceScriptSource(new ClassPathResource("scripts/token_bucket.lua"));
     }
+
+    /**
+     * Register the sliding window Lua script as a bean.
+     * 
+     * This script implements atomic sliding window rate limiting using Redis sorted sets.
+     * It removes old entries, counts remaining, checks the limit, and adds the current
+     * timestamp all as a single atomic operation.
+     * 
+     * @return ScriptSource for the sliding window Lua script
+     */
+    @Bean
+    public ScriptSource slidingWindowScriptSource() {
+        logger.info("Loading sliding window Lua script");
+        return new ResourceScriptSource(new ClassPathResource("scripts/sliding_window.lua"));
+    }
 }
