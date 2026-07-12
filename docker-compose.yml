@@ -1,0 +1,60 @@
+version: '3.9'
+
+services:
+  # Redis service
+  redis:
+    image: redis:7-alpine
+    container_name: rateforge-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - rateforge-network
+    restart: unless-stopped
+
+  # Rateforge application service
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: rateforge-app
+    ports:
+      - "3000:3000"
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      # Redis connection configuration
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: 6379
+      # Rate limiting configuration
+      RATELIMIT_ENABLED: "true"
+      RATELIMIT_ALGORITHM: "TOKEN_BUCKET"
+      # Logging configuration
+      LOGGING_LEVEL_ROOT: INFO
+      LOGGING_LEVEL_COM_RATEFORGE: DEBUG
+    networks:
+      - rateforge-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+volumes:
+  redis-data:
+    driver: local
+
+networks:
+  rateforge-network:
+    driver: bridge

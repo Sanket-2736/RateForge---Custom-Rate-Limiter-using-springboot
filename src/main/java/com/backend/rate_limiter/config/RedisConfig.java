@@ -77,4 +77,18 @@ public class RedisConfig {
         logger.info("Loading sliding window Lua script");
         return new ResourceScriptSource(new ClassPathResource("scripts/sliding_window.lua"));
     }
+
+    /**
+     * Register the leaky bucket Lua script as a bean.
+     * 
+     * This script implements atomic leaky bucket rate limiting. It calculates bucket
+     * leakage, removes leaked capacity, checks queue space, and enqueues atomically.
+     * 
+     * @return ScriptSource for the leaky bucket Lua script
+     */
+    @Bean
+    public ScriptSource leakyBucketScriptSource() {
+        logger.info("Loading leaky bucket Lua script");
+        return new ResourceScriptSource(new ClassPathResource("scripts/leaky_bucket.lua"));
+    }
 }

@@ -1,0 +1,54 @@
+# Maven
+target/
+.m2/
+*.jar.original
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# IDE
+.idea/
+.vscode/
+*.iml
+*.iws
+*.ipr
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Build artifacts
+*.class
+*.log
+*.ctxt
+.classpath
+.gradle/
+build/
+
+# Docker
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# Project files
+README.md
+*.md
+.env
+.env.local
+.env.*.local
+
+# Node (if any frontend)
+node_modules/
+npm-debug.log
+yarn-error.log
+dist/
+
+# Test files (optional, can be included if needed)
+# src/test/
+
+# Maven wrapper
+.mvn/
+mvnw
+mvnw.cmd
