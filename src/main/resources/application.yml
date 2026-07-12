@@ -1,0 +1,23 @@
+server:
+  port: 3000
+
+spring:
+  application:
+    name: rateforge
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      timeout: 2000ms
+      lettuce:
+        pool:
+          max-active: 8
+          max-idle: 8
+          min-idle: 0
+          shutdown-timeout: 2000ms
+
+logging:
+  level:
+    root: INFO
+    com.rateforge: DEBUG
