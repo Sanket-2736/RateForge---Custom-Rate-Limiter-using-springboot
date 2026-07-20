@@ -11,39 +11,11 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.util.HashMap;
 import java.util.Map;
-
-/**
- * Demo controller for testing rate limiting algorithms.
- * 
- * Each endpoint is protected by the rate limit filter and pinned to a specific algorithm:
- * - /demo/token-bucket: Token bucket algorithm
- * - /demo/sliding-window: Sliding window algorithm
- * - /demo/leaky-bucket: Leaky bucket algorithm
- * 
- * Use the X-API-Key header to test different tier limits:
- * - X-API-Key: demo-free → FREE tier (100 req/hour)
- * - X-API-Key: demo-pro → PRO tier (1000 req/hour)
- * - X-API-Key: demo-enterprise → ENTERPRISE tier (unlimited)
- * 
- * Example requests:
- * curl -H "X-API-Key: demo-pro" http://localhost:3000/demo/token-bucket
- * curl -H "X-API-Key: demo-free" http://localhost:3000/demo/sliding-window
- * curl -H "X-API-Key: demo-enterprise" http://localhost:3000/demo/leaky-bucket
- */
 @RestController
 @RequestMapping("/demo")
 public class DemoController {
     private static final Logger logger = LoggerFactory.getLogger(DemoController.class);
 
-    /**
-     * Token bucket demo endpoint.
-     * 
-     * Algorithm: Accumulates tokens, allows bursts up to capacity.
-     * Use case: APIs that tolerate occasional traffic spikes.
-     * 
-     * @param message Optional message to include in response
-     * @return Demo response with algorithm info
-     */
     @GetMapping("/token-bucket")
     public ResponseEntity<Map<String, Object>> tokenBucketDemo(
             @RequestParam(value = "message", defaultValue = "Token bucket request") String message) {
@@ -61,16 +33,7 @@ public class DemoController {
                 .contentType(MediaType.APPLICATION_JSON)
                 .body(response);
     }
-
-    /**
-     * Sliding window demo endpoint.
-     * 
-     * Algorithm: Counts requests in a time window, rejects when limit exceeded.
-     * Use case: Accurate per-window request counting (e.g., requests per minute).
-     * 
-     * @param message Optional message to include in response
-     * @return Demo response with algorithm info
-     */
+    
     @GetMapping("/sliding-window")
     public ResponseEntity<Map<String, Object>> slidingWindowDemo(
             @RequestParam(value = "message", defaultValue = "Sliding window request") String message) {
@@ -88,16 +51,7 @@ public class DemoController {
                 .contentType(MediaType.APPLICATION_JSON)
                 .body(response);
     }
-
-    /**
-     * Leaky bucket demo endpoint.
-     * 
-     * Algorithm: Queue that drains at constant rate, smooths traffic.
-     * Use case: Protecting downstream systems from traffic bursts.
-     * 
-     * @param message Optional message to include in response
-     * @return Demo response with algorithm info
-     */
+    
     @GetMapping("/leaky-bucket")
     public ResponseEntity<Map<String, Object>> leakyBucketDemo(
             @RequestParam(value = "message", defaultValue = "Leaky bucket request") String message) {

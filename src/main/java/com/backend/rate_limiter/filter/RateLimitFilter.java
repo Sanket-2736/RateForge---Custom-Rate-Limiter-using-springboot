@@ -123,7 +123,7 @@ public class RateLimitFilter extends OncePerRequestFilter {
                     clientId, tierName, result.remainingTokens());
                 filterChain.doFilter(request, response);
             } else {
-                // Request rejected
+                // Request rejected - STOP processing and return error
                 logger.warn("Request rejected for client: {}, tier: {} (rate limit exceeded)", 
                     clientId, tierName);
                 
@@ -144,6 +144,10 @@ public class RateLimitFilter extends OncePerRequestFilter {
 
                 response.getWriter().write(objectMapper.writeValueAsString(errorBody));
                 response.getWriter().flush();
+                
+                // CRITICAL FIX: Return here to prevent further filter chain processing
+                // Without this return, the request continues to the controller despite the 429 response
+                return;
             }
         } catch (Exception e) {
             logger.error("Error in rate limit filter", e);

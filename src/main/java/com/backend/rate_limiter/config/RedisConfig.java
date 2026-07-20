@@ -47,45 +47,18 @@ public class RedisConfig {
         return template;
     }
 
-    /**
-     * Register the token bucket Lua script as a bean.
-     * 
-     * This script performs atomic rate limiting on the Redis server,
-     * eliminating race conditions present in naive implementations.
-     * 
-     * Returns a script source that will be used with StringRedisTemplate.execute()
-     * 
-     * @return ScriptSource for the token bucket Lua script
-     */
     @Bean
     public ScriptSource tokenBucketScriptSource() {
         logger.info("Loading token bucket Lua script");
         return new ResourceScriptSource(new ClassPathResource("scripts/token_bucket.lua"));
     }
 
-    /**
-     * Register the sliding window Lua script as a bean.
-     * 
-     * This script implements atomic sliding window rate limiting using Redis sorted sets.
-     * It removes old entries, counts remaining, checks the limit, and adds the current
-     * timestamp all as a single atomic operation.
-     * 
-     * @return ScriptSource for the sliding window Lua script
-     */
     @Bean
     public ScriptSource slidingWindowScriptSource() {
         logger.info("Loading sliding window Lua script");
         return new ResourceScriptSource(new ClassPathResource("scripts/sliding_window.lua"));
     }
 
-    /**
-     * Register the leaky bucket Lua script as a bean.
-     * 
-     * This script implements atomic leaky bucket rate limiting. It calculates bucket
-     * leakage, removes leaked capacity, checks queue space, and enqueues atomically.
-     * 
-     * @return ScriptSource for the leaky bucket Lua script
-     */
     @Bean
     public ScriptSource leakyBucketScriptSource() {
         logger.info("Loading leaky bucket Lua script");

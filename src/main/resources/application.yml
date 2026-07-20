@@ -6,12 +6,10 @@ spring:
     name: rateforge
   data:
     redis:
-      host: ${REDIS_HOST:positive-sailfish-152046.upstash.io}
-      port: ${REDIS_PORT:6379}
-      username: ${REDIS_USERNAME:default}
-      password: ${REDIS_PASSWORD:gQAAAAAAAlHuAAIgcDE2OWEzMmQyMDBmYWU0ZTI5YjE0N2M4YmJiMzgwOGI0ZA}
+      host: localhost
+      port: 6379
       ssl:
-        enabled: true
+        enabled: false
       timeout: 2000ms
       lettuce:
         pool:

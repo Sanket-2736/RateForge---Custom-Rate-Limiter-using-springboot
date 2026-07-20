@@ -21,3 +21,4 @@ public class RateLimiterApplication {
 	}
 
 }
+// java -jar target/rateforge-0.0.1-SNAPSHOT.jar --spring.data.redis.host=localhost --spring.data.redis.port=6379
