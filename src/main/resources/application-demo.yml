@@ -1,0 +1,65 @@
+spring:
+  application:
+    name: rateforge-demo
+  redis:
+    host: localhost
+    port: 6379
+    database: 0
+    timeout: 2000
+    password: ""
+    ssl: false
+    lettuce:
+      pool:
+        max-active: 20
+        max-idle: 10
+        min-idle: 2
+
+ratelimit:
+  enabled: true
+  algorithm: TOKEN_BUCKET
+  header-name: X-API-Key
+  exclude-paths: /health,/swagger-ui.html,/v3/api-docs,/demo/info
+  
+  tiers:
+    free:
+      name: "Free Tier (Demo)"
+      capacity: 10
+      window-size-ms: 10000
+      algorithm: TOKEN_BUCKET
+      
+    pro:
+      name: "Pro Tier (Demo)"
+      capacity: 20
+      window-size-ms: 10000
+      algorithm: SLIDING_WINDOW
+      
+    enterprise:
+      name: "Enterprise Tier (Demo)"
+      capacity: 10
+      window-size-ms: 10000
+      algorithm: LEAKY_BUCKET
+
+logging:
+  level:
+    root: WARN
+    com.backend.rate_limiter: INFO
+  pattern:
+    console: "%d{HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"
+
+server:
+  port: 8080
+  servlet:
+    context-path: /
+  tomcat:
+    threads:
+      max: 200
+      min-spare: 10
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: always
