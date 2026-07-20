@@ -42,4 +42,5 @@ local expirySeconds = math.ceil((capacity / leakRatePerSec) + 10)
 redis.call('EXPIRE', queueKey, expirySeconds)
 redis.call('EXPIRE', lastLeakKey, expirySeconds)
 
-return {allowed, math.floor(newQueueSize)}
+local remainingCapacity = capacity - math.floor(newQueueSize)
+return {allowed, remainingCapacity}
