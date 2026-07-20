@@ -23,7 +23,6 @@ logging:
     root: INFO
     com.rateforge: DEBUG
 
-# Rate Limiting Configuration
 ratelimit:
   enabled: true
   algorithm: TOKEN_BUCKET  # TOKEN_BUCKET, SLIDING_WINDOW, or LEAKY_BUCKET

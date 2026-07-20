@@ -14,20 +14,13 @@ public class WebConfig {
 
     @Autowired
     private RateLimitFilter rateLimitFilter;
-
-    /**
-     * Register the RateLimitFilter as a servlet filter.
-     * 
-     * The filter is applied to all requests except those excluded via configuration.
-     * 
-     * @return FilterRegistrationBean for rate limit filter
-     */
+    
     @Bean
     public FilterRegistrationBean<RateLimitFilter> rateLimitFilterRegistration() {
         FilterRegistrationBean<RateLimitFilter> registrationBean = new FilterRegistrationBean<>();
         registrationBean.setFilter(rateLimitFilter);
-        registrationBean.addUrlPatterns("/*");  // Apply to all URLs
-        registrationBean.setOrder(1);  // Execute early in the filter chain
+        registrationBean.addUrlPatterns("/*"); 
+        registrationBean.setOrder(1);
         registrationBean.setName("RateLimitFilter");
         return registrationBean;
     }

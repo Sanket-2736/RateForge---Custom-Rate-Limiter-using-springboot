@@ -4,54 +4,14 @@ import com.backend.rate_limiter.dto.RateLimitResult;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.data.redis.core.RedisCallback;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.scripting.ScriptSource;
 import org.springframework.stereotype.Component;
 
+import java.util.ArrayList;
 import java.util.List;
 
-/**
- * Sliding Window Rate Limiter using Redis Sorted Sets and Lua Scripts.
- * 
- * This implementation uses Redis sorted sets to track request timestamps within
- * a sliding time window. The entire operation (trim old entries, count, check,
- * add) executes atomically on the Redis server.
- * 
- * HOW IT WORKS:
- * 1. Uses a Redis sorted set where the score is the request timestamp
- * 2. On each request:
- *    - Remove all entries with timestamp < (now - windowSize)
- *    - Count remaining entries
- *    - If count < maxRequests: add current timestamp and allow
- *    - Else: reject
- * 
- * RACE CONDITION PROTECTION:
- * ⚠️ WITHOUT ATOMICITY (naive approach):
- * Thread 1: ZCARD (count=2) ← sees count=2
- * Thread 2: ZCARD (count=2) ← sees count=2 (same value!)
- * Thread 1: Check (2 < 3) -> allowed, ZADD
- * Thread 2: Check (2 < 3) -> allowed, ZADD ← BOTH allowed!
- * Result: 4 requests let through instead of 3
- * 
- * ✓ WITH ATOMICITY (Lua script):
- * Thread 1: EVAL (ZCARD + check + ZADD) -> allowed
- * Thread 2: EVAL (ZCARD + check + ZADD) -> rejected (sees Thread 1's ZADD)
- * Result: Exactly 3 requests let through
- * 
- * The Lua script guarantees no interleaving between the count check and add.
- * 
- * ADVANTAGES:
- * - Accurate: no requests slip through when limit is reached
- * - Sliding: old requests automatically drop out of the window
- * - Memory efficient: old entries are automatically pruned
- * - Fair: FIFO-like behavior within the window
- * 
- * DISADVANTAGES:
- * - Memory: stores timestamp for every request (vs token bucket's simple counter)
- * - Overhead: Lua script execution on every request
- * - Precision: requires synchronized clocks for distributed systems
- */
 @Component
 public class SlidingWindowLimiter {
     private static final Logger logger = LoggerFactory.getLogger(SlidingWindowLimiter.class);
@@ -62,82 +22,117 @@ public class SlidingWindowLimiter {
     @Autowired
     private ScriptSource slidingWindowScriptSource;
 
-    /**
-     * Check if a request is allowed and record it if accepted.
-     * 
-     * Uses a Lua script to atomically:
-     * 1. Remove timestamps outside the sliding window
-     * 2. Count remaining requests
-     * 3. Check if another request is allowed
-     * 4. If allowed, add current timestamp
-     * 5. Return decision
-     * 
-     * RACE CONDITION GUARANTEE:
-     * The Lua script ensures the count-check-add sequence is atomic.
-     * Two concurrent requests cannot both read an old count and then both add.
-     * 
-     * @param key The rate limit key (e.g., user ID, IP address)
-     * @param windowSizeMs The sliding window size in milliseconds
-     * @param maxRequests Maximum allowed requests within the window
-     * @param now Current timestamp in milliseconds (for testability)
-     * @return RateLimitResult with allowed flag and remaining request count
-     */
     public RateLimitResult checkAndRecord(String key, long windowSizeMs, int maxRequests, long now) {
+        logger.debug("[SlidingWindow] Checking rate limit for key: {}, window: {}ms, max: {}", 
+            key, windowSizeMs, maxRequests);
+
         try {
-            // Read the Lua script
-            String script = slidingWindowScriptSource.getScriptAsString();
+            // Load the Lua script from classpath
+            String scriptContent = slidingWindowScriptSource.getScriptAsString();
+            logger.debug("[SlidingWindow] Lua script loaded, length: {} bytes", scriptContent.length());
 
-            // Execute the Lua script atomically on Redis server
-            Object result = stringRedisTemplate.execute((RedisCallback<Object>) connection -> {
-                Object evalResult = connection.eval(
-                    script.getBytes(),
-                    null,  // ReturnType - let Redis determine
-                    1,     // number of keys
-                    key.getBytes(),
-                    String.valueOf(now).getBytes(),
-                    String.valueOf(windowSizeMs).getBytes(),
-                    String.valueOf(maxRequests).getBytes()
-                );
-                return evalResult;
-            });
+            DefaultRedisScript<List> redisScript = new DefaultRedisScript<>();
+            redisScript.setScriptText(scriptContent);
+            redisScript.setResultType(List.class);
+            
+            logger.debug("[SlidingWindow] Created RedisScript with List return type");
 
-            if (result instanceof List<?>) {
-                List<?> resultList = (List<?>) result;
-                if (resultList.size() >= 2) {
-                    long allowed = ((Number) resultList.get(0)).longValue();
-                    long remainingRequests = ((Number) resultList.get(1)).longValue();
-                    boolean requestAllowed = allowed == 1;
+            List<String> keys = new ArrayList<>();
+            keys.add(key);
+            
+            logger.debug("[SlidingWindow] Key: [{}]", key);
+            logger.debug("[SlidingWindow] Arguments: [now={}, windowSize={}, maxRequests={}]", 
+                now, windowSizeMs, maxRequests);
 
-                    if (requestAllowed) {
-                        logger.debug("Request allowed. Key: {}, Window size: {}ms, Max requests: {}, Requests in window: {}", 
-                            key, windowSizeMs, maxRequests, remainingRequests);
-                    } else {
-                        logger.debug("Request rejected. Key: {}, Window size: {}ms, Max requests: {}, Requests in window: {}", 
-                            key, windowSizeMs, maxRequests, remainingRequests);
-                    }
+            List result = stringRedisTemplate.execute(
+                redisScript,
+                keys,
+                String.valueOf(now),
+                String.valueOf(windowSizeMs),
+                String.valueOf(maxRequests)
+            );
 
-                    return new RateLimitResult(requestAllowed, remainingRequests);
-                }
+            logger.debug("[SlidingWindow] Script execution completed");
+
+            if (result == null) {
+                logger.error("[SlidingWindow] Redis returned null result");
+                return new RateLimitResult(false, 0);
             }
 
-            logger.warn("Unexpected script result type: {}", result);
-            return new RateLimitResult(false, 0);
+            if (result.isEmpty()) {
+                logger.error("[SlidingWindow] Redis returned empty list");
+                return new RateLimitResult(false, 0);
+            }
+
+            logger.debug("[SlidingWindow] Lua script returned list with {} elements", result.size());
+
+            if (result.size() < 2) {
+                logger.error("[SlidingWindow] Expected list with 2+ elements, got {}", result.size());
+                for (int i = 0; i < result.size(); i++) {
+                    logger.error("[SlidingWindow]   Element[{}]: {} ({})", 
+                        i, result.get(i), result.get(i) == null ? "null" : result.get(i).getClass().getSimpleName());
+                }
+                return new RateLimitResult(false, 0);
+            }
+
+            try {
+                Object allowedObj = result.get(0);
+                Object remainingObj = result.get(1);
+
+                logger.debug("[SlidingWindow] Result[0]: {} (type: {})", 
+                    allowedObj, allowedObj == null ? "null" : allowedObj.getClass().getSimpleName());
+                logger.debug("[SlidingWindow] Result[1]: {} (type: {})", 
+                    remainingObj, remainingObj == null ? "null" : remainingObj.getClass().getSimpleName());
+
+                long allowed = convertToLong(allowedObj);
+                long remainingRequests = convertToLong(remainingObj);
+
+                boolean requestAllowed = (allowed == 1);
+
+                logger.info("[SlidingWindow] DECISION: allowed={}, remaining={}, key={}", 
+                    requestAllowed, remainingRequests, key);
+
+                return new RateLimitResult(requestAllowed, remainingRequests);
+            } catch (Exception e) {
+                logger.error("[SlidingWindow] Failed to parse result elements: {}", e.getMessage());
+                logger.error("[SlidingWindow] Result[0]: {} (type: {})", 
+                    result.get(0), result.get(0) == null ? "null" : result.get(0).getClass().getSimpleName());
+                logger.error("[SlidingWindow] Result[1]: {} (type: {})", 
+                    result.get(1), result.get(1) == null ? "null" : result.get(1).getClass().getSimpleName());
+                logger.error("[SlidingWindow] Parsing exception: ", e);
+                return new RateLimitResult(false, 0);
+            }
         } catch (Exception e) {
-            logger.error("Error executing sliding window script for key: {}", key, e);
-            // Fail open: allow the request if script fails (don't drop traffic)
+            logger.error("[SlidingWindow] CRITICAL ERROR during script execution: {}", e.getMessage());
+            logger.error("[SlidingWindow] Exception type: {}", e.getClass().getName());
+            logger.error("[SlidingWindow] Exception: ", e);
+            logger.warn("[SlidingWindow] FAIL-OPEN: allowing request due to error");
             return new RateLimitResult(true, 0);
         }
     }
+    
+    private long convertToLong(Object value) {
+        if (value == null) {
+            throw new IllegalArgumentException("Cannot convert null to long");
+        }
 
-    /**
-     * Check if a request is allowed and record it if accepted.
-     * Convenience method that uses the current system time.
-     * 
-     * @param key The rate limit key
-     * @param windowSizeMs The sliding window size in milliseconds
-     * @param maxRequests Maximum allowed requests within the window
-     * @return RateLimitResult with allowed flag and remaining request count
-     */
+        if (value instanceof Long) {
+            return (Long) value;
+        } else if (value instanceof Integer) {
+            return ((Integer) value).longValue();
+        } else if (value instanceof java.math.BigDecimal) {
+            return ((java.math.BigDecimal) value).longValue();
+        } else if (value instanceof Number) {
+            return ((Number) value).longValue();
+        } else if (value instanceof String) {
+            return Long.parseLong((String) value);
+        } else if (value instanceof byte[]) {
+            return Long.parseLong(new String((byte[]) value));
+        } else {
+            return Long.parseLong(value.toString());
+        }
+    }
+    
     public RateLimitResult checkAndRecord(String key, long windowSizeMs, int maxRequests) {
         return checkAndRecord(key, windowSizeMs, maxRequests, System.currentTimeMillis());
     }

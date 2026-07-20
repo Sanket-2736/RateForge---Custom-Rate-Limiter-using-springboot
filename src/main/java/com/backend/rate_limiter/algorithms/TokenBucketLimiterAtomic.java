@@ -11,27 +11,6 @@ import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
 import java.util.List;
-
-/**
- * Atomic Token Bucket Rate Limiter using Redis Lua Scripts.
- * 
- * This implementation performs the entire rate limiting check and token consumption
- * as a single atomic operation on the Redis server, eliminating race conditions.
- * 
- * Uses Spring Data Redis official API with RedisScript<List> for framework-agnostic
- * Lua script execution.
- * 
- * The Lua script (token_bucket.lua) executes atomically, meaning:
- * - No two threads can interleave their reads/writes
- * - The check and consume happen together, preventing over-limit requests
- * - Perfect serialization of rate limit decisions
- * 
- * Key advantage over naive implementation:
- * Timeline with atomic operation:
- * Thread 1: EVAL (atomic GET, check, SET) -> allowed
- * Thread 2: EVAL (atomic GET, check, SET) -> rejected (sees Thread 1's update)
- * ✓ Exactly 1 allowed, as expected!
- */
 @Component
 public class TokenBucketLimiterAtomic {
     private static final Logger logger = LoggerFactory.getLogger(TokenBucketLimiterAtomic.class);
@@ -43,17 +22,7 @@ public class TokenBucketLimiterAtomic {
 
     @Autowired
     private ScriptSource tokenBucketScriptSource;
-
-    /**
-     * Check if a request is allowed and consume a token if permitted.
-     * 
-     * Executes atomically on Redis server using Lua script.
-     * 
-     * @param key The rate limit key (e.g., api-key:demo-free)
-     * @param capacity Maximum tokens in the bucket
-     * @param refillRatePerSec Tokens refilled per second
-     * @return RateLimitResult with allowed flag and remaining tokens
-     */
+    
     public RateLimitResult checkAndConsume(String key, int capacity, double refillRatePerSec) {
         long now = System.currentTimeMillis();
         String tokenKey = key + TOKEN_KEY_SUFFIX;
@@ -63,19 +32,15 @@ public class TokenBucketLimiterAtomic {
             key, capacity, refillRatePerSec);
 
         try {
-            // Load the Lua script from classpath
             String scriptContent = tokenBucketScriptSource.getScriptAsString();
             logger.debug("[TokenBucket] Lua script loaded, length: {} bytes", scriptContent.length());
 
-            // Create a RedisScript with List return type
-            // This tells Spring Data Redis the script returns an array: {allowed, remainingTokens}
             DefaultRedisScript<List> redisScript = new DefaultRedisScript<>();
             redisScript.setScriptText(scriptContent);
             redisScript.setResultType(List.class);
             
             logger.debug("[TokenBucket] Created RedisScript with List return type");
 
-            // Prepare keys list
             List<String> keys = new ArrayList<>();
             keys.add(tokenKey);
             keys.add(lastRefillKey);
@@ -84,9 +49,6 @@ public class TokenBucketLimiterAtomic {
             logger.debug("[TokenBucket] Arguments: [now={}, capacity={}, refillRate={}]", 
                 now, capacity, refillRatePerSec);
 
-            // Execute the script using Spring Data Redis official API
-            // signature: execute(RedisScript<T> script, List<K> keys, Object... args)
-            // This is framework-agnostic and works with any Redis driver
             List result = stringRedisTemplate.execute(
                 redisScript,
                 keys,
@@ -109,8 +71,6 @@ public class TokenBucketLimiterAtomic {
 
             logger.debug("[TokenBucket] Lua script returned list with {} elements", result.size());
 
-            // Parse the result: Lua returns {allowed, remainingTokens}
-            // Spring Data Redis converts it to List with Long elements
             if (result.size() < 2) {
                 logger.error("[TokenBucket] Expected list with 2+ elements, got {}", result.size());
                 for (int i = 0; i < result.size(); i++) {
@@ -121,7 +81,6 @@ public class TokenBucketLimiterAtomic {
             }
 
             try {
-                // Element 0: allowed flag (1 or 0 from Lua)
                 Object allowedObj = result.get(0);
                 Object remainingObj = result.get(1);
 
@@ -130,7 +89,6 @@ public class TokenBucketLimiterAtomic {
                 logger.debug("[TokenBucket] Result[1]: {} (type: {})", 
                     remainingObj, remainingObj == null ? "null" : remainingObj.getClass().getSimpleName());
 
-                // Convert to long values (Spring Data Redis typically returns Long or BigDecimal)
                 long allowed = convertToLong(allowedObj);
                 long remainingTokens = convertToLong(remainingObj);
 
@@ -154,26 +112,11 @@ public class TokenBucketLimiterAtomic {
             logger.error("[TokenBucket] Exception type: {}", e.getClass().getName());
             logger.error("[TokenBucket] Exception: ", e);
             
-            // Fail open: allow requests if Redis fails
-            // Better to allow extra traffic than block all traffic when Redis is down
             logger.warn("[TokenBucket] FAIL-OPEN: allowing request due to error");
             return new RateLimitResult(true, 0);
         }
     }
-
-    /**
-     * Convert various types to long.
-     * 
-     * Spring Data Redis may return different types depending on configuration:
-     * - Long (typical)
-     * - java.math.BigDecimal
-     * - String
-     * - Number
-     * 
-     * @param value The value to convert
-     * @return Long value
-     * @throws NumberFormatException if conversion fails
-     */
+    
     private long convertToLong(Object value) {
         if (value == null) {
             throw new IllegalArgumentException("Cannot convert null to long");

@@ -13,14 +13,11 @@ public class TierConfig {
     private Tier free = new Tier();
     private Tier pro = new Tier();
     private Tier enterprise = new Tier();
-
-    /**
-     * Represents a single tier's rate limit configuration.
-     */
+    
     public static class Tier {
-        private int capacity = 100;      // Maximum requests in the window
-        private long windowSizeMs = 3600000;  // 1 hour in milliseconds
-        private double rate = 1.0;       // For token bucket: tokens/sec or for leaky: leak rate/sec
+        private int capacity = 100;    
+        private long windowSizeMs = 3600000;  
+        private double rate = 1.0;     
 
         public int getCapacity() {
             return capacity;
@@ -79,13 +76,7 @@ public class TierConfig {
     public void setEnterprise(Tier enterprise) {
         this.enterprise = enterprise;
     }
-
-    /**
-     * Get tier configuration by tier name.
-     * 
-     * @param tierName The tier name (free, pro, enterprise)
-     * @return Tier configuration, or free tier if not found
-     */
+    
     public Tier getTier(String tierName) {
         switch (tierName.toLowerCase()) {
             case "pro":
@@ -97,12 +88,7 @@ public class TierConfig {
                 return free;
         }
     }
-
-    /**
-     * Get all tiers as a map.
-     * 
-     * @return Map of tier name to tier configuration
-     */
+    
     public Map<String, Tier> getAllTiers() {
         Map<String, Tier> tiers = new HashMap<>();
         tiers.put("free", free);

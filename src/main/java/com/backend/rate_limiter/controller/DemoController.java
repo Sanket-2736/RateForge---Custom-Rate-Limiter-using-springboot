@@ -69,12 +69,7 @@ public class DemoController {
                 .contentType(MediaType.APPLICATION_JSON)
                 .body(response);
     }
-
-    /**
-     * Info endpoint showing available demo endpoints and tier limits.
-     * 
-     * @return Endpoint info and tier limits
-     */
+    
     @GetMapping("/info")
     public ResponseEntity<Map<String, Object>> info() {
         logger.info("Demo info endpoint called");

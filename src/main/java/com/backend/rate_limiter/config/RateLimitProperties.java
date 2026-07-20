@@ -6,9 +6,7 @@ import org.springframework.stereotype.Component;
 import java.util.HashMap;
 import java.util.Map;
 
-/**
- * Configuration properties for rate limiting.
- */
+
 @Component
 @ConfigurationProperties(prefix = "ratelimit")
 public class RateLimitProperties {
@@ -20,8 +18,8 @@ public class RateLimitProperties {
 
     public static class Tier {
         private int capacity;
-        private double rate;  // tokens/sec for bucket, window size ms for sliding, leak rate for leaky
-
+        private double rate;  
+        
         public int getCapacity() {
             return capacity;
         }
